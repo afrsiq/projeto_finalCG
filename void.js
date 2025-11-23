@@ -18,7 +18,7 @@ void main(){
 
     float r = length(uv);
 
-    float blackHoleSize = 0.2 + 0.15 * sin(uTime * 0.6);
+    float blackHoleSize = 0.2 + 0.15 * sin(uTime * 0.2);
 
     float ring = smoothstep(blackHoleSize + 0.05, blackHoleSize, r);
 
@@ -92,3 +92,4 @@ function main(){
 }
 
 window.onload = main;
+
