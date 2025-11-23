@@ -61,7 +61,10 @@ function main(){
     gl.useProgram(shaderProgram);
 
     const positions = [
-        -1,-1, 1,-1, -1,1, 1,1
+        -1,-1,
+         1,-1,
+        -1,1,
+         1,1
     ];
 
     const buffer = gl.createBuffer();
@@ -92,4 +95,5 @@ function main(){
 }
 
 window.onload = main;
+
 
