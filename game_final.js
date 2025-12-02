@@ -2,8 +2,8 @@
 import { Background } from "./fundo_final.js";
 import { Pista } from "./pista.js";
 import { Robo1 } from "./robo1.js";
-import { BlackHole } from "./void.js";     // se você tiver o buraco negro
-// import { AlgoMais } from "./algomais.js";  // etc...
+import { BlackHole } from "./void.js";     // buraco negro
+// import { AlgoMais } from "./algomais.js"
 
 // criar o canvas
 const canvas = document.getElementById("glCanvas");
@@ -31,7 +31,7 @@ window.addEventListener("keyup", e => {
 const background = new Background(gl);
 const pista      = new Pista(gl);
 const robo       = new Robo1(gl);
-const blackHole  = new BlackHole(gl); // se existir
+const blackHole  = new BlackHole(gl); 
 
 let last = performance.now();
 
@@ -45,15 +45,16 @@ function loop(now){
     // UPDATE (lógica)
     pista.update(dt);
     robo.update(dt, input);
-    blackHole.update(dt);   // se você tiver buraco negro
+    blackHole.update(dt);   /
 
     // RENDER (desenho)
     background.render(now * 0.001);
     pista.render();
-    blackHole.render(now * 0.001);  // se tiver
+    blackHole.render(now * 0.001);  
     robo.render();
 
     requestAnimationFrame(loop);
 }
 
 requestAnimationFrame(loop);
+
