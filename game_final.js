@@ -45,7 +45,7 @@ function loop(now){
     // UPDATE (lógica)
     pista.update(dt);
     robo.update(dt, input);
-    blackHole.update(dt);   /
+    blackHole.update(dt);   
 
     // RENDER (desenho)
     background.render(now * 0.001);
