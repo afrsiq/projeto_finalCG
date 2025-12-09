@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> Robô 3D - WebGL (Interativo)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+        
+        /* ======== HUD - Controles ======== */
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px;
+            border-radius: 12px;
+            color: #2cfff4;
+            font-size: 13px;
+            max-width: 280px;
+            border: 2px solid #2cfff4;
+            box-shadow: 0 0 15px rgba(44, 255, 244, 0.3);
+            z-index: 100;
+        }
+        
+        #controls h3 {
+            margin: 0 0 15px 0;
+            color: #2cfff4;
+            text-shadow: 0 0 5px rgba(44, 255, 244, 0.5);
+            font-size: 16px;
+            border-bottom: 1px solid #2cfff4;
+            padding-bottom: 10px;
+        }
+        
+        #controls .control-group {
+            margin: 12px 0;
+            padding: 10px;
+            background: rgba(44, 255, 244, 0.05);
+            border-left: 3px solid #2cfff4;
+            border-radius: 4px;
+        }
+        
+        #controls .control-group strong {
+            color: #00ff99;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        #controls p {
+            margin: 5px 0;
+            line-height: 1.6;
+            font-size: 12px;
+        }
+        
+        .key {
+            background: rgba(44, 255, 244, 0.2);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+            color: #00ff99;
+            display: inline-block;
+            margin: 0 3px;
+        }
+        
+        /* ======== HUD - Status ======== */
+        #statusInfo {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px;
+            border-radius: 12px;
+            color: #ffaa00;
+            font-size: 13px;
+            border: 2px solid #ffaa00;
+            box-shadow: 0 0 15px rgba(255, 170, 0, 0.3);
+            font-family: 'Courier New', monospace;
+            min-width: 220px;
+            z-index: 100;
+        }
+        
+        #statusInfo strong {
+            color: #ffff00;
+        }
+        
+        /* ======== HUD - Pausa ======== */
+        #pauseStatus {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 72px;
+            font-weight: bold;
+            color: #ff4444;
+            text-shadow: 0 0 20px rgba(255, 68, 68, 0.8);
+            z-index: 200;
+            display: none;
+        }
+        
+        /* ======== HUD - Instruções adicionales ======== */
+        #helpText {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 10px;
+            color: #aaffaa;
+            font-size: 12px;
+            border: 1px dashed #aaffaa;
+            max-width: 250px;
+            line-height: 1.6;
+        }
+        
+        /* ======== HUD - FPS Counter ======== */
+        #fpsCounter {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 12px 18px;
+            border-radius: 8px;
+            color: #00ff99;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            border: 1px solid #00ff99;
+            font-weight: bold;
+        }
+        
+        /* ======== Animação de pulo ======== */
+        @keyframes jumpPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .jumping {
+            animation: jumpPulse 0.3s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    
+    <!-- ===== HUD ESQUERDO: CONTROLES ===== -->
+    <div id="controls">
+        <h3>🎮 CONTROLES</h3>
+        
+        <div class="control-group">
+            <strong>➡️ Movimento Horizontal</strong>
+            <p><span class="key">A</span> / <span class="key">◀</span> = Esquerda</p>
+            <p><span class="key">D</span> / <span class="key">▶</span> = Direita</p>
+        </div>
+        
+        <div class="control-group">
+            <strong>⬆️ Pulo</strong>
+            <p><span class="key">W</span> / <span class="key">ESPAÇO</span> / <span class="key">▲</span></p>
+        </div>
+        
+        <div class="control-group">
+            <strong>Câmera (Mouse)</strong>
+            <p>Arrastar = Rotacionar</p>
+            <p>Scroll = Zoom</p>
+        </div>
+        
+        <div class="control-group">
+            <strong>Sistema</strong>
+            <p><span class="key">P</span> = Pausa</p>
+            <p><span class="key">R</span> = Reiniciar</p>
+        </div>
+    </div>
+    
+    <!-- ===== HUD DIREITO: STATUS ===== -->
+    <div id="statusInfo">
+        <strong> STATUS DO ROBÔ</strong><br>
+        <div style="margin-top: 10px; font-size: 11px; line-height: 1.8;">
+            <strong>Posição:</strong> X: 0.0% | Y: 0.0%<br>
+            <strong>Velocidade:</strong> 0.0%<br>
+            <strong>Status:</strong> No chão
+        </div>
+    </div>
+    
+    <!-- ===== HUD CENTRO: PAUSA ===== -->
+    <div id="pauseStatus"></div>
+    
+    <!-- ===== HUD INFERIOR ESQUERDO: AJUDA ===== -->
+    <div id="helpText">
+        <strong> Dicas:</strong><br>
+        • Use <span class="key">A</span> e <span class="key">D</span> para se movimentar<br>
+        • Pressione <span class="key">W</span> ou <span class="key">ESPAÇO</span> para pular<br>
+        • Pressione <span class="key">P</span> para pausar o jogo<br>
+        • Pressione <span class="key">R</span> para reiniciar
+    </div>
+    
+    <!-- ===== HUD INFERIOR DIREITO: FPS ===== -->
+    <div id="fpsCounter">
+        FPS: 60 | Frame: 0ms
+    </div>
+
+    <script src="robo1.js"></script>
+</body>
+</html>
