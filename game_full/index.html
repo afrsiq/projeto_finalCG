@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Void Runner</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        
+        #ui {
+            position: absolute; top: 20px; left: 20px; color: #0ff; 
+            font-size: 18px; text-shadow: 0 0 5px #0ff;
+            pointer-events: none;
+        }
+
+        #gameOverScreen {
+            display: none;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 50px;
+            border: 3px solid #f00;
+            border-radius: 15px;
+            box-shadow: 0 0 30px #f00;
+            z-index: 10;
+        }
+
+        #gameOverScreen h1 {
+            color: #ff0000;
+            margin: 0 0 30px 0;
+            text-shadow: 0 0 15px #f00;
+            font-size: 50px;
+            font-weight: 900;
+            letter-spacing: 5px;
+        }
+
+        button {
+            background: #fff;
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: 0.2s;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        button:hover {
+            background: #f00;
+            color: #fff;
+            box-shadow: 0 0 20px #f00;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        MOVIMENTO: A / D <br>
+        PULAR: ESPAÇO
+    </div>
+
+    <div id="gameOverScreen">
+        <h1>GAME OVER</h1>
+        <button id="restartBtn">REINICIAR JOGO</button>
+    </div>
+
+    <canvas id="glCanvas"></canvas>
+
+    <script type="module" src="game_full.js"></script>
+</body>
+</html>
