@@ -1,2 +1,2 @@
 # projeto_finalCG
-
+Para jogar o jogo, selecione o arquivo index.html na pasta game_full
