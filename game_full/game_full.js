@@ -481,10 +481,14 @@ async function main() {
   const gl = canvas.getContext("webgl");
   if (!gl) return alert("WebGL erro");
 
+  // --- REFERÊNCIAS HTML (Corrigindo os erros de undefined) ---
+  const startScreen = document.getElementById("start-screen");
   const gameOverScreen = document.getElementById("gameOverScreen");
-  const restartBtn = document.getElementById("restartBtn");
-  
+  const scoreBoard = document.getElementById("score-board");
   const scoreEl = document.getElementById("score-val");
+
+  const btnPlay = document.getElementById("btn-play");
+  const restartBtn = document.getElementById("restartBtn");
 
   function resize() {
       canvas.width = window.innerWidth;
@@ -497,22 +501,20 @@ async function main() {
   gl.enable(gl.DEPTH_TEST);
   gl.clearColor(0.05, 0.05, 0.15, 1.0);
 
+  // --- SHADERS E OBJETOS ---
   const obstacleManager = new ObstacleManager(gl); 
   const progPista = createProgram(gl, vsCommon, fsPista);
   const progRobo = createProgram(gl, vsCommon, fsRobo);
-
-  //Fundo
-  const progBg = createProgram(gl, vsBg, fsBg);
   
-  const bgQuadGeo = createBuffer(gl, new Float32Array([
-      -1, -1,   1, -1,   -1,  1,   
-      -1,  1,   1, -1,    1,  1
-  ]), null, null, new Uint16Array([0,1,2, 3,4,5]));
+  // Fundo
+  const progBg = createProgram(gl, vsBg, fsBg);
+  const bgQuadGeo = createBuffer(gl, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), null, null, new Uint16Array([0,1,2, 3,4,5]));
 
-  //Buraco negro
+  // Buraco Negro
   const progVoid = createProgram(gl, vsVoid, fsVoid);
   const voidGeo = createVerticalQuad(gl);
 
+  // Geometrias
   const pistaGeo = createPlane(gl, 20, 200);
   const cilGeo   = createCylinder(gl);
   const sphereGeo= createSphere(gl);
@@ -524,58 +526,84 @@ async function main() {
   const lightCyan = [0.0, 1.0, 1.0];
   const emerald   = [0.0, 0.8, 0.4];
 
-  // Definição da velocidade e inicialização da pontuação
-  const GAME_SPEED = 50.0; // Velocidade Constante e Rápida
-  const TEXTURE_SPEED = GAME_SPEED / 22.0;
-  
-  let score = 0; // Variável de Pontuação
-
+  // --- VARIÁVEIS DE ESTADO ---
+  let gameState = 'MENU'; // 'MENU', 'PLAYING', 'GAMEOVER'
+  let GAME_SPEED = 35.0; 
+  let score = 0;
   let trackOffset = 0;
+  
+  // Variável para controlar a câmera (0 = 3ª pessoa, 1 = 1ª pessoa)
+  let cameraMode = 0; 
+
+  // Robô
+  let currentLane = 0;
+  const LANE_WIDTH = 6.0;
+  const LERP_SPEED = 10.0;
   let robo = {
-      x: 0,
-      y: -2.0,
-      velY: 0,
-      isJumping: false,
-      gravity: 0.03,
-      jumpPower: 0.55
+      x: 0, y: -2.0, velY: 0, isJumping: false,
+      gravity: 0.03, jumpPower: 0.55
   };
   
-  let isGameOver = false;
-  let then = 0;
-
-  function resetGame() {
-      isGameOver = false;
-      gameOverScreen.style.display = "none";
+  // Inputs Específicos para controle de câmera e movimento
+  const inputState = { jump: false };
+  
+  window.addEventListener('keydown', e => {
+      const k = e.key.toLowerCase();
       
+      // Só processa input se estiver jogando
+      if (gameState === 'PLAYING') {
+          if (k === 'a' || k === 'arrowleft') {
+              if (currentLane > -1) currentLane--;
+          }
+          if (k === 'd' || k === 'arrowright') {
+              if (currentLane < 1) currentLane++;
+          }
+          if (k === ' ' || k === 'w' || k === 'arrowup') {
+              inputState.jump = true;
+          }
+          // TROCA DE CÂMERA (Tecla C)
+          if (k === 'c') {
+              cameraMode = (cameraMode === 0) ? 1 : 0;
+          }
+      }
+  });
+
+  window.addEventListener('keyup', e => {
+      const k = e.key.toLowerCase();
+      if (k === ' ' || k === 'w' || k === 'arrowup') {
+          inputState.jump = false;
+      }
+  });
+
+  // --- FUNÇÕES DE CONTROLE ---
+  function startGame() {
+      gameState = 'PLAYING';
+      startScreen.style.display = 'none';
+      scoreBoard.style.display = 'block';
+      gameOverScreen.style.display = 'none';
+      
+      // Reset total
       currentLane = 0;
-      robo.x = 0;
-      robo.y = -2.0;
-      robo.velY = 0;
-      robo.isJumping = false;
-      
-      // Resetar Pontuação
-      score = 0;
-      scoreEl.innerText = "0";
-
+      robo.x = 0; robo.y = -2.0; robo.velY = 0; robo.isJumping = false;
+      score = 0; scoreEl.innerText = "0";
       trackOffset = 0;
       obstacleManager.reset();
-      then = performance.now() * 0.001;
-      requestAnimationFrame(render);
   }
 
-  restartBtn.addEventListener("click", resetGame);
+  // Bind dos botões (com verificação para não dar erro)
+  if (btnPlay) btnPlay.onclick = startGame;
+  if (restartBtn) restartBtn.onclick = startGame; // Restart usa a mesma lógica de start
 
+  // --- LOOP DE RENDERIZAÇÃO ---
+  let then = 0;
   function render(now) {
-      if (isGameOver) return;
-
       now *= 0.001;
       const dt = now - then;
       then = now;
 
-      // 1. Limpa a tela
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      // 2. DESENHAR O FUNDO (Space Background)
+      // 1. Desenha o Fundo (Sempre visível)
       gl.disable(gl.DEPTH_TEST); 
       gl.useProgram(progBg);
       gl.uniform2f(gl.getUniformLocation(progBg, "uResolution"), canvas.width, canvas.height);
@@ -587,70 +615,72 @@ async function main() {
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       gl.enable(gl.DEPTH_TEST); 
 
-      // --- LOGICA DE JOGO (Pontos e Velocidade) ---
-      if (score > 0 || GAME_SPEED > 20.0) { // Estamos jogando?
+      // Se estiver em Game Over, para a atualização física mas continua desenhando
+      if (gameState === 'GAMEOVER') {
+          // Pode adicionar efeito de glitch ou apenas pausar
+      }
+
+      // --- ATUALIZAÇÃO (Apenas se estiver jogando) ---
+      if (gameState === 'PLAYING') {
            score += GAME_SPEED * dt * 0.1; 
            scoreEl.innerText = Math.floor(score);
            
-           trackOffset += (GAME_SPEED / 22.0) * dt; // Pista rápida
+           trackOffset += (GAME_SPEED / 22.0) * dt; 
            obstacleManager.update(dt, GAME_SPEED);
-      } else {
-           // Menu Mode: Pista lenta
-           trackOffset += 0.2 * dt; 
+
+           // Física Robô
+           const targetX = currentLane * LANE_WIDTH; 
+           robo.x += (targetX - robo.x) * LERP_SPEED * dt; 
+        
+           if (inputState.jump && !robo.isJumping) {
+               robo.velY = robo.jumpPower;
+               robo.isJumping = true;
+           }
+           robo.velY -= robo.gravity; 
+           robo.y += robo.velY;
+           if (robo.y <= -2.0) {
+               robo.y = -2.0; robo.velY = 0; robo.isJumping = false;
+           }
+
+           // Colisão
+           if (obstacleManager.checkCollisions(robo)) {
+               gameState = 'GAMEOVER';
+               gameOverScreen.style.display = "block";
+           }
+      } else if (gameState === 'MENU') {
+           trackOffset += 0.5 * dt; // Movimento lento no menu
       }
 
-      // --- FISICA DO ROBO ---
-      const targetX = currentLane * LANE_WIDTH; 
-      robo.x += (targetX - robo.x) * LERP_SPEED * dt; 
-    
-      if (input.jump && !robo.isJumping) {
-          robo.velY = robo.jumpPower;
-          robo.isJumping = true;
-      }
-      robo.velY -= robo.gravity; 
-      robo.y += robo.velY;
-      if (robo.y <= -2.0) {
-          robo.y = -2.0; robo.velY = 0; robo.isJumping = false;
-      }
-
-      // Colisão
-      if (obstacleManager.checkCollisions(robo)) {
-          isGameOver = true;
-          gameOverScreen.style.display = "block";
-          return; 
-      }
-
-      // --- CÂMERA E MATRIZES ---
+      // --- CÂMERA ---
       const aspect = canvas.width / canvas.height;
       const proj = Mat4.perspective(45 * Math.PI/180, aspect, 0.1, 400);
       
       let camPos, target;
-      
-      if (score === 0 && GAME_SPEED === 20.0 && !input.jump && currentLane === 0) {
-          // ESTADO MENU: Câmera olha para o horizonte (Buraco Negro)
-          camPos = [0, 3, 25]; 
-          target = [0, 5, -200]; 
-      } else {
-          // ESTADO JOGO: Câmera segue o robô
-          camPos = [robo.x * 0.3, 6, 15]; 
+
+      if (cameraMode === 0) {
+          // 3ª Pessoa (Padrão)
+          camPos = [robo.x * 0.5, 6, 15]; 
           target = [0, 0, -10];
+      } else {
+          // 1ª Pessoa (Visão do Robô)
+          // Coloca a câmera na altura da cabeça (robo.y + altura) e um pouco à frente
+          camPos = [robo.x, robo.y + 5.0, 0.0]; 
+          target = [robo.x, robo.y + 5.0, -20]; 
       }
       
       const view = Mat4.lookAt(camPos, target, [0,1,0]);
 
-      // 3. DESENHAR BURACO NEGRO (No horizonte)
+      // 2. Desenha Buraco Negro
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.useProgram(progVoid);
       setUniforms(gl, progVoid, view, proj);
       gl.uniform1f(gl.getUniformLocation(progVoid, "uTime"), now);
       
-      // Posiciona bem longe (Z = -220) e escala muito (100x)
       let mVoid = Mat4.identity();
       mVoid = Mat4.translate(mVoid, 0, 5, -220); 
       mVoid = Mat4.scale(mVoid, 100, 100, 1); 
       
-      // Setup manual dos buffers para o void
       gl.uniformMatrix4fv(gl.getUniformLocation(progVoid, "uModel"), false, mVoid);
       gl.bindBuffer(gl.ARRAY_BUFFER, voidGeo.vbo);
       const posLocV = gl.getAttribLocation(progVoid, "aPosition");
@@ -667,7 +697,7 @@ async function main() {
       gl.drawElements(gl.TRIANGLES, voidGeo.count, gl.UNSIGNED_SHORT, 0);
       gl.disable(gl.BLEND);
 
-      // 4. DESENHAR PISTA
+      // 3. Desenha Pista
       gl.useProgram(progPista);
       setUniforms(gl, progPista, view, proj);
       gl.uniform1f(gl.getUniformLocation(progPista, "uOffset"), trackOffset);
@@ -676,114 +706,115 @@ async function main() {
       gl.uniform1i(gl.getUniformLocation(progPista, "uSampler"), 0);
       drawMesh(gl, progPista, pistaGeo, Mat4.identity());
 
-      // 5. DESENHAR OBSTÁCULOS
+      // 4. Desenha Obstáculos
       obstacleManager.render(view, proj);
 
-      // 6. DESENHAR ROBÔ
-      gl.useProgram(progRobo);
-      setUniforms(gl, progRobo, view, proj); 
-      
-      // Animação Robô
-      let armAngle = 0, legAngle = 0;
-      if (!robo.isJumping) {
-          armAngle = Math.sin(now * 15) * 0.6;
-          legAngle = Math.sin(now * 15) * 0.6;
-      } else {
-          armAngle = -0.5; legAngle = 0.5;
-      }
+      // 5. Desenha Robô (Apenas se não estiver em 1ª Pessoa para não atrapalhar a visão)
+      if (cameraMode === 0) {
+          gl.useProgram(progRobo);
+          setUniforms(gl, progRobo, view, proj); 
+          
+          let armAngle = 0, legAngle = 0;
+          if (gameState === 'PLAYING' && !robo.isJumping) {
+              armAngle = Math.sin(now * 15) * 0.6;
+              legAngle = Math.sin(now * 15) * 0.6;
+          } else if (gameState === 'PLAYING') {
+              armAngle = -0.5; legAngle = 0.5;
+          }
 
-      const baseY = robo.y + 3.2; 
+          const baseY = robo.y + 3.2; 
 
-      // Corpo
-      let m = Mat4.identity();
-      m = Mat4.translate(m, robo.x, baseY, 0);
-      m = Mat4.scale(m, 0.8, 2.2, 0.8);
-      setColor(gl, progRobo, neonGreen, false);
-      drawMesh(gl, progRobo, cilGeo, m);
-
-      // Peito
-      m = Mat4.identity();
-      m = Mat4.translate(m, robo.x, baseY + 0.1, -0.41);
-      m = Mat4.scale(m, 0.5, 1.0, 0.1);
-      setColor(gl, progRobo, lightCyan, true);
-      drawMesh(gl, progRobo, cilGeo, m);
-
-      // Costas (Asa)
-      m = Mat4.identity();
-      m = Mat4.translate(m, robo.x, baseY + 0.2, 0.42);
-      m = Mat4.rotateZ(m, Math.PI); 
-      m = Mat4.scale(m, 2.0, 1.7, 0.1);
-      setColor(gl, progRobo, lightCyan, true);
-      drawMesh(gl, progRobo, pyrGeo, m);
-
-      // Anel
-      m = Mat4.identity();
-      m = Mat4.translate(m, robo.x, baseY + 0.2, 0.42);
-      m = Mat4.rotateX(m, Math.PI / 2);
-      m = Mat4.scale(m, 1.0, 0.15, 1.0);
-      setColor(gl, progRobo, neonGreen, true);
-      drawMesh(gl, progRobo, cilGeo, m);
-
-      // Tampa
-      m = Mat4.identity();
-      m = Mat4.translate(m, robo.x, baseY + 0.2, 0.48);
-      m = Mat4.scale(m, 1.0, 1.0, 0.05);
-      setColor(gl, progRobo, neonGreen, true);
-      drawMesh(gl, progRobo, sphereGeo, m);
-
-      // Cabeça
-      const headY = baseY + 1.5;
-      m = Mat4.identity();
-      m = Mat4.translate(m, robo.x, headY, 0);
-      m = Mat4.scale(m, 0.8, 0.8, 0.8);
-      setColor(gl, progRobo, neonGreen, false);
-      drawMesh(gl, progRobo, sphereGeo, m);
-
-      // Espinhos Cabeça
-      for(let i=0; i<3; i++) {
-          let sm = Mat4.identity();
-          sm = Mat4.translate(sm, robo.x, headY + 0.3, 0); 
-          sm = Mat4.rotateX(sm, (i-1) * 0.7); 
-          sm = Mat4.translate(sm, 0, 0.23, 0); 
-          sm = Mat4.scale(sm, 0.1, 0.25, 0.1); 
+          // Corpo
+          let m = Mat4.identity();
+          m = Mat4.translate(m, robo.x, baseY, 0);
+          m = Mat4.scale(m, 0.8, 2.2, 0.8);
           setColor(gl, progRobo, neonGreen, false);
-          drawMesh(gl, progRobo, pyrGeo, sm);
-      }
+          drawMesh(gl, progRobo, cilGeo, m);
 
-      // Olhos
-      m = Mat4.identity(); m = Mat4.translate(m, robo.x - 0.2, headY + 0.1, -0.35); m = Mat4.scale(m, 0.15, 0.15, 0.15);
-      setColor(gl, progRobo, emerald, true); drawMesh(gl, progRobo, sphereGeo, m);
-      m = Mat4.identity(); m = Mat4.translate(m, robo.x + 0.2, headY + 0.1, -0.35); m = Mat4.scale(m, 0.15, 0.15, 0.15);
-      setColor(gl, progRobo, emerald, true); drawMesh(gl, progRobo, sphereGeo, m);
+          // Peito
+          m = Mat4.identity();
+          m = Mat4.translate(m, robo.x, baseY + 0.1, -0.41);
+          m = Mat4.scale(m, 0.5, 1.0, 0.1);
+          setColor(gl, progRobo, lightCyan, true);
+          drawMesh(gl, progRobo, cilGeo, m);
 
-      // Braços
-      const drawArm = (side) => {
-          let sm = Mat4.identity();
-          sm = Mat4.translate(sm, robo.x + (side * 0.54), baseY + 0.9, 0);
-          sm = Mat4.rotateX(sm, side * -armAngle);
-          let shoulderM = Mat4.copy(sm);
-          let drawM = Mat4.scale(sm, 0.3, 0.3, 0.3);
-          setColor(gl, progRobo, lightCyan, false); drawMesh(gl, progRobo, sphereGeo, drawM);
-          shoulderM = Mat4.translate(shoulderM, 0, -0.9, 0);
-          shoulderM = Mat4.scale(shoulderM, 0.2, 1.9, 0.2);
-          setColor(gl, progRobo, neonGreen, false); drawMesh(gl, progRobo, cilGeo, shoulderM);
-      };
-      drawArm(-1); drawArm(1);
+          // Costas
+          m = Mat4.identity();
+          m = Mat4.translate(m, robo.x, baseY + 0.2, 0.42);
+          m = Mat4.rotateZ(m, Math.PI); 
+          m = Mat4.scale(m, 2.0, 1.7, 0.1);
+          setColor(gl, progRobo, lightCyan, true);
+          drawMesh(gl, progRobo, pyrGeo, m);
 
-      // Pernas
-      const drawLeg = (side) => {
-          let lm = Mat4.identity();
-          lm = Mat4.translate(lm, robo.x + (side * 0.3), baseY - 0.8, 0); 
-          lm = Mat4.rotateX(lm, side * legAngle);
-          let kneeM = Mat4.copy(lm);
-          lm = Mat4.translate(lm, 0, -1.5, 0); 
-          let legScale = Mat4.scale(lm, 0.25, 3.0, 0.25); 
-          setColor(gl, progRobo, neonGreen, false); drawMesh(gl, progRobo, cilGeo, legScale);
-          kneeM = Mat4.translate(kneeM, 0, -1.5, -0.15);
-          kneeM = Mat4.scale(kneeM, 0.26, 0.3, 0.1);
-          setColor(gl, progRobo, lightCyan, true); drawMesh(gl, progRobo, cilGeo, kneeM);
-      };
-      drawLeg(-1); drawLeg(1);
+          // Anel
+          m = Mat4.identity();
+          m = Mat4.translate(m, robo.x, baseY + 0.2, 0.42);
+          m = Mat4.rotateX(m, Math.PI / 2);
+          m = Mat4.scale(m, 1.0, 0.15, 1.0);
+          setColor(gl, progRobo, neonGreen, true);
+          drawMesh(gl, progRobo, cilGeo, m);
+
+          // Tampa
+          m = Mat4.identity();
+          m = Mat4.translate(m, robo.x, baseY + 0.2, 0.48);
+          m = Mat4.scale(m, 1.0, 1.0, 0.05);
+          setColor(gl, progRobo, neonGreen, true);
+          drawMesh(gl, progRobo, sphereGeo, m);
+
+          // Cabeça
+          const headY = baseY + 1.5;
+          m = Mat4.identity();
+          m = Mat4.translate(m, robo.x, headY, 0);
+          m = Mat4.scale(m, 0.8, 0.8, 0.8);
+          setColor(gl, progRobo, neonGreen, false);
+          drawMesh(gl, progRobo, sphereGeo, m);
+
+          // Espinhos
+          for(let i=0; i<3; i++) {
+              let sm = Mat4.identity();
+              sm = Mat4.translate(sm, robo.x, headY + 0.3, 0); 
+              sm = Mat4.rotateX(sm, (i-1) * 0.7); 
+              sm = Mat4.translate(sm, 0, 0.23, 0); 
+              sm = Mat4.scale(sm, 0.1, 0.25, 0.1); 
+              setColor(gl, progRobo, neonGreen, false);
+              drawMesh(gl, progRobo, pyrGeo, sm);
+          }
+
+          // Olhos
+          m = Mat4.identity(); m = Mat4.translate(m, robo.x - 0.2, headY + 0.1, -0.35); m = Mat4.scale(m, 0.15, 0.15, 0.15);
+          setColor(gl, progRobo, emerald, true); drawMesh(gl, progRobo, sphereGeo, m);
+          m = Mat4.identity(); m = Mat4.translate(m, robo.x + 0.2, headY + 0.1, -0.35); m = Mat4.scale(m, 0.15, 0.15, 0.15);
+          setColor(gl, progRobo, emerald, true); drawMesh(gl, progRobo, sphereGeo, m);
+
+          // Braços
+          const drawArm = (side) => {
+              let sm = Mat4.identity();
+              sm = Mat4.translate(sm, robo.x + (side * 0.54), baseY + 0.9, 0);
+              sm = Mat4.rotateX(sm, side * -armAngle);
+              let shoulderM = Mat4.copy(sm);
+              let drawM = Mat4.scale(sm, 0.3, 0.3, 0.3);
+              setColor(gl, progRobo, lightCyan, false); drawMesh(gl, progRobo, sphereGeo, drawM);
+              shoulderM = Mat4.translate(shoulderM, 0, -0.9, 0);
+              shoulderM = Mat4.scale(shoulderM, 0.2, 1.9, 0.2);
+              setColor(gl, progRobo, neonGreen, false); drawMesh(gl, progRobo, cilGeo, shoulderM);
+          };
+          drawArm(-1); drawArm(1);
+
+          // Pernas
+          const drawLeg = (side) => {
+              let lm = Mat4.identity();
+              lm = Mat4.translate(lm, robo.x + (side * 0.3), baseY - 0.8, 0); 
+              lm = Mat4.rotateX(lm, side * legAngle);
+              let kneeM = Mat4.copy(lm);
+              lm = Mat4.translate(lm, 0, -1.5, 0); 
+              let legScale = Mat4.scale(lm, 0.25, 3.0, 0.25); 
+              setColor(gl, progRobo, neonGreen, false); drawMesh(gl, progRobo, cilGeo, legScale);
+              kneeM = Mat4.translate(kneeM, 0, -1.5, -0.15);
+              kneeM = Mat4.scale(kneeM, 0.26, 0.3, 0.1);
+              setColor(gl, progRobo, lightCyan, true); drawMesh(gl, progRobo, cilGeo, kneeM);
+          };
+          drawLeg(-1); drawLeg(1);
+      } // Fim do if cameraMode === 0
 
       requestAnimationFrame(render);
   }

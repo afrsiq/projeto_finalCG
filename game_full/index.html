@@ -8,23 +8,37 @@
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
         canvas { display: block; width: 100vw; height: 100vh; }
         
+        /* HUD */
         #ui {
             position: absolute; top: 20px; left: 20px; color: #0ff; 
             font-size: 18px; text-shadow: 0 0 5px #0ff;
-            pointer-events: none;
+            pointer-events: none; z-index: 5;
         }
 
-        /* --- PLACAR --- */
         #score-board {
             position: absolute; top: 20px; right: 20px; color: #fff;
             font-size: 24px; font-weight: bold; text-shadow: 0 0 5px #000;
-            pointer-events: none;
+            display: none; /* Escondido no menu */
+            pointer-events: none; z-index: 5;
         }
 
+        /* MENU INICIAL (Simples) */
+        #start-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            z-index: 20;
+        }
+
+        #start-screen h1 {
+            color: #0ff; font-size: 60px; text-shadow: 0 0 20px #0ff; margin-bottom: 10px;
+        }
+
+        /* GAME OVER */
         #gameOverScreen {
             display: none;
-            position: absolute;
-            top: 50%; left: 50%;
+            position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             text-align: center;
             background: rgba(0, 0, 0, 0.9);
@@ -32,54 +46,49 @@
             border: 3px solid #f00;
             border-radius: 15px;
             box-shadow: 0 0 30px #f00;
-            z-index: 10;
+            z-index: 30;
         }
 
         #gameOverScreen h1 {
-            color: #ff0000;
-            margin: 0 0 30px 0;
-            text-shadow: 0 0 15px #f00;
-            font-size: 50px;
-            font-weight: 900;
-            letter-spacing: 5px;
+            color: #ff0000; margin: 0 0 30px 0; font-size: 50px;
         }
 
+        /* BOTÕES */
         button {
-            background: #fff;
-            color: #000;
-            border: none;
-            padding: 15px 40px;
-            font-size: 24px;
-            font-weight: bold;
-            cursor: pointer;
-            text-transform: uppercase;
+            background: #fff; color: #000; border: none;
+            padding: 15px 40px; font-size: 24px; font-weight: bold;
+            cursor: pointer; text-transform: uppercase;
             transition: 0.2s;
-            font-family: 'Courier New', Courier, monospace;
+            box-shadow: 0 0 10px rgba(255,255,255,0.5);
         }
+        button:hover { transform: scale(1.1); }
+        
+        #btn-play { background: #0ff; color: #000; box-shadow: 0 0 20px #0ff; }
+        #restartBtn { background: #f00; color: #fff; box-shadow: 0 0 20px #f00; }
 
-        button:hover {
-            background: #f00;
-            color: #fff;
-            box-shadow: 0 0 20px #f00;
-            transform: scale(1.1);
-        }
     </style>
 </head>
 <body>
+    <div id="start-screen">
+        <h1>VOID RUNNER</h1>
+        <button id="btn-play">INICIAR JOGO</button>
+    </div>
+
     <div id="ui">
         MOVIMENTO: A / D <br>
-        PULAR: ESPAÇO
+        PULAR: ESPAÇO <br>
+        CÂMERA: C
     </div>
 
     <div id="score-board">Pontos: <span id="score-val">0</span></div>
 
     <div id="gameOverScreen">
-        <h1>GAME OVER</h1>
-        <button id="restartBtn">REINICIAR JOGO</button>
+        <h1>FALHA CRÍTICA</h1>
+        <button id="restartBtn">REINICIAR SISTEMA</button>
     </div>
 
     <canvas id="glCanvas"></canvas>
 
-    <script type="module" src="game_full.js"></script>
+    <script src="m4.js"></script> <script type="module" src="game_full.js"></script>
 </body>
 </html>
