@@ -288,9 +288,9 @@ class ObstacleManager {
   }
 }
 
-// ============================================================================
-// 3. MAIN GAME
-// ============================================================================
+
+//  MAIN GAME
+
 
 const vsCommon = `
   attribute vec3 aPosition;
@@ -340,15 +340,32 @@ const fsRobo = `
   }
 `;
 
-const input = { x: 0, jump: false };
+// VARIÁVEIS GLOBAIS DE CONTROLE
+let currentLane = 0; // -1: Esquerda, 0: Meio, 1: Direita
+const LANE_WIDTH = 6.0; // Distância lateral (deve bater com o spawn dos obstáculos)
+const LERP_SPEED = 5.0; // Velocidade da animação lateral
+
+const input = { jump: false }; // Só precisamos rastrear o pulo aqui
+
 window.addEventListener('keydown', e => {
-  if(e.key==='a' || e.key==='ArrowLeft') input.x = -1;
-  if(e.key==='d' || e.key==='ArrowRight') input.x = 1;
-  if(e.key===' ' || e.key==='w' || e.key==='ArrowUp') input.jump = true;
+    // Esquerda
+    if(e.key==='a' || e.key==='ArrowLeft') {
+        if (currentLane > -1) currentLane--; 
+    }
+    // Direita
+    if(e.key==='d' || e.key==='ArrowRight') {
+        if (currentLane < 1) currentLane++; 
+    }
+    // Pulo
+    if(e.key===' ' || e.key==='w' || e.key==='ArrowUp') {
+        input.jump = true;
+    }
 });
+
 window.addEventListener('keyup', e => {
-  if(e.key==='a' || e.key==='ArrowLeft' || e.key==='d' || e.key==='ArrowRight') input.x = 0;
-  if(e.key===' ' || e.key==='w' || e.key==='ArrowUp') input.jump = false;
+    if(e.key===' ' || e.key==='w' || e.key==='ArrowUp') {
+        input.jump = false;
+    }
 });
 
 async function main() {
@@ -358,6 +375,8 @@ async function main() {
 
   const gameOverScreen = document.getElementById("gameOverScreen");
   const restartBtn = document.getElementById("restartBtn");
+  
+  const scoreEl = document.getElementById("score-val");
 
   function resize() {
       canvas.width = window.innerWidth;
@@ -385,10 +404,11 @@ async function main() {
   const lightCyan = [0.0, 1.0, 1.0];
   const emerald   = [0.0, 0.8, 0.4];
 
-  const GAME_SPEED = 20.0;
-  
-  // RESTAURADO PARA A VELOCIDADE ORIGINAL QUE VOCÊ GOSTAVA
+  // Definição da velocidade e inicialização da pontuação
+  const GAME_SPEED = 50.0; // Velocidade Constante e Rápida
   const TEXTURE_SPEED = GAME_SPEED / 22.0;
+  
+  let score = 0; // Variável de Pontuação
 
   let trackOffset = 0;
   let robo = {
@@ -397,7 +417,7 @@ async function main() {
       velY: 0,
       isJumping: false,
       gravity: 0.03,
-      jumpPower: 0.45
+      jumpPower: 0.55
   };
   
   let isGameOver = false;
@@ -406,9 +426,17 @@ async function main() {
   function resetGame() {
       isGameOver = false;
       gameOverScreen.style.display = "none";
+      
+      currentLane = 0;
       robo.x = 0;
       robo.y = -2.0;
       robo.velY = 0;
+      robo.isJumping = false;
+      
+      // Resetar Pontuação
+      score = 0;
+      scoreEl.innerText = "0";
+
       trackOffset = 0;
       obstacleManager.reset();
       then = performance.now() * 0.001;
@@ -426,10 +454,15 @@ async function main() {
 
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      // Física Robô
-      robo.x += input.x * 20.0 * dt; 
-      robo.x = Math.max(-8, Math.min(8, robo.x));
+      // Aumenta pontos baseado na velocidade fixa
+      score += GAME_SPEED * dt * 0.1; 
+      scoreEl.innerText = Math.floor(score);
+    
 
+      // Física Robô
+      const targetX = currentLane * LANE_WIDTH; 
+      robo.x += (targetX - robo.x) * LERP_SPEED * dt; 
+    
       if (input.jump && !robo.isJumping) {
           robo.velY = robo.jumpPower;
           robo.isJumping = true;
@@ -444,8 +477,8 @@ async function main() {
           robo.isJumping = false;
       }
 
+      // Atualiza textura e obstáculos com velocidade fixa
       trackOffset += TEXTURE_SPEED * dt;
-
       obstacleManager.update(dt, GAME_SPEED);
 
       if (obstacleManager.checkCollisions(robo)) {
@@ -489,9 +522,6 @@ async function main() {
           legAngle = 0.5;
       }
 
-      // --- ELEVAÇÃO DO ROBÔ (Pernas Longas) ---
-      // Elevamos o centro de gravidade (baseY) para 3.2 acima do chão (robo.y)
-      // Isso permite pernas de tamanho ~3.0 sem afundar.
       const baseY = robo.y + 3.2; 
 
       // Corpo
@@ -579,23 +609,18 @@ async function main() {
       };
       drawArm(-1); drawArm(1);
 
-      // --- CORREÇÃO DAS PERNAS LONGAS ---
+      // Pernas
       const drawLeg = (side) => {
           let lm = Mat4.identity();
-          // Quadril (baseY - 0.8)
           lm = Mat4.translate(lm, robo.x + (side * 0.3), baseY - 0.8, 0); 
           lm = Mat4.rotateX(lm, side * legAngle);
           let kneeM = Mat4.copy(lm);
           
-          // Perna Longa (Escala 3.0)
-          // Se a perna tem tamanho 3.0, metade é 1.5. 
-          // Transladamos -1.5 para o pivô ficar no topo.
           lm = Mat4.translate(lm, 0, -1.5, 0); 
           let legScale = Mat4.scale(lm, 0.25, 3.0, 0.25); 
           setColor(gl, progRobo, neonGreen, false);
           drawMesh(gl, progRobo, cilGeo, legScale);
           
-          // Joelho
           kneeM = Mat4.translate(kneeM, 0, -1.5, -0.15);
           kneeM = Mat4.scale(kneeM, 0.26, 0.3, 0.1);
           setColor(gl, progRobo, lightCyan, true);

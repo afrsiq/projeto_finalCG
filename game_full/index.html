@@ -14,6 +14,13 @@
             pointer-events: none;
         }
 
+        /* --- PLACAR --- */
+        #score-board {
+            position: absolute; top: 20px; right: 20px; color: #fff;
+            font-size: 24px; font-weight: bold; text-shadow: 0 0 5px #000;
+            pointer-events: none;
+        }
+
         #gameOverScreen {
             display: none;
             position: absolute;
@@ -63,6 +70,8 @@
         MOVIMENTO: A / D <br>
         PULAR: ESPAÇO
     </div>
+
+    <div id="score-board">Pontos: <span id="score-val">0</span></div>
 
     <div id="gameOverScreen">
         <h1>GAME OVER</h1>
