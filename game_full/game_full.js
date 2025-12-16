@@ -1,11 +1,12 @@
 /* game_full.js - Versão Final (Pernas Longas, Elevado e Faixas Largas) */
 
-// ============================================================================
-// 1. BIBLIOTECA MATEMÁTICA (Mat4)
-// ============================================================================
+// BIBLIOTECA MATEMÁTICA - operações de matrizes
 const Mat4 = {
+//matriz identidade
   identity: () => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
-  
+
+  //Projeção perspectiva
+  //fov: campo de visão, aspect: proporção da tela, near: plano próximo, far: plano distante
   perspective: (fov, aspect, near, far) => {
       const f = 1.0 / Math.tan(fov / 2);
       const nf = 1 / (near - far);
@@ -17,7 +18,9 @@ const Mat4 = {
       ]);
   },
 
+//Definição das coordenadas da câmera
   lookAt: (eye, center, up) => {
+    //vetor que aponta para o alvo 
       const z = normalize([eye[0]-center[0], eye[1]-center[1], eye[2]-center[2]]);
       const x = normalize(cross(up, z));
       const y = cross(z, x);
@@ -29,6 +32,7 @@ const Mat4 = {
       ]);
   },
 
+  //Translação
   translate: (m, x, y, z) => {
       const out = new Float32Array(m);
       out[12] = m[0]*x + m[4]*y + m[8]*z + m[12];
@@ -37,7 +41,7 @@ const Mat4 = {
       out[15] = m[3]*x + m[7]*y + m[11]*z + m[15];
       return out;
   },
-
+//Escala
   scale: (m, x, y, z) => {
       const out = new Float32Array(m);
       out[0] *= x; out[4] *= y; out[8] *= z;
@@ -47,6 +51,7 @@ const Mat4 = {
       return out;
   },
 
+  //Rotação - eixo X
   rotateX: (m, angle) => {
       const c = Math.cos(angle), s = Math.sin(angle);
       const out = new Float32Array(m);
@@ -57,6 +62,7 @@ const Mat4 = {
       return out;
   },
 
+  //Rotação - eixo Z
   rotateZ: (m, angle) => {
       const c = Math.cos(angle), s = Math.sin(angle);
       const out = new Float32Array(m);
@@ -70,25 +76,28 @@ const Mat4 = {
   copy: (m) => new Float32Array(m)
 };
 
+//função de normalização de um vetor
 function normalize(v) {
   const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
   return len > 0 ? [v[0]/len, v[1]/len, v[2]/len] : v;
 }
+//Produto Vetorial
 function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+
+//Produto escalar
 function dot(a, b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
 
-// ============================================================================
-// 2. GERENCIADOR DE OBSTÁCULOS
-// ============================================================================
-
+//Shaders
 const vsObs = `
   attribute vec3 aPosition;
-  attribute vec3 aNormal;
-  uniform mat4 uModel;
-  uniform mat4 uView;
-  uniform mat4 uProj;
-  varying vec3 vNormal;
+  attribute vec3 aNormal; //normal da superfície
+  uniform mat4 uModel; //onde o objeto se encontra
+  uniform mat4 uView; //posição da camera
+  uniform mat4 uProj; //lente da camera
+  varying vec3 vNormal;//será enviada ao fragment shader
   void main() {
+
+  // Transforma a posição local -> mundo -> câmera -> tela
       gl_Position = uProj * uView * uModel * vec4(aPosition, 1.0);
       vNormal = aNormal;
   }
@@ -100,37 +109,34 @@ const fsObs = `
   uniform vec3 uColor;
   
   void main() {
-      vec3 n = normalize(vNormal);
+      vec3 n = normalize(vNormal); // tamanho 1 da normal
 
-      // --- FONTE DE LUZ 1: PRINCIPAL (Estrela Distante) ---
-      // Vem da direita superior (0.5, 0.8, 0.5)
-      // Cor: Branca Fria
+      // FONTE DE LUZ 1 (Branca): PRINCIPAL (Estrela Distante)
+      // direita superior (0.5, 0.8, 0.5)
       vec3 l1Dir = normalize(vec3(0.5, 0.8, 0.5));
       float diff1 = max(dot(n, l1Dir), 0.0);
       vec3 light1 = vec3(1.0, 1.0, 1.0) * diff1;
 
-      // --- FONTE DE LUZ 2: BURACO NEGRO (Backlight) ---
+      // FONTE DE LUZ 2 (Roxo): BURACO NEGRO (Backlight)
       // Vem do fundo (0.0, 0.2, -1.0) - Z negativo
-      // Cor: Roxo Intenso para dar clima
       vec3 l2Dir = normalize(vec3(0.0, 0.2, -1.0));
       float diff2 = max(dot(n, l2Dir), 0.0);
       vec3 light2 = vec3(0.8, 0.0, 1.0) * diff2 * 0.8; // Intensidade 0.8
 
-      // --- LUZ AMBIENTE (Base) ---
+      //  LUZ AMBIENTE (Base) 
       // Garante que nada fique 100% preto nas sombras
       vec3 ambient = vec3(0.1, 0.1, 0.2);
 
-      // SOMA TUDO
+      // Soma de todas as fontes de luz
       vec3 totalLight = ambient + light1 + light2;
       
       gl_FragColor = vec4(uColor * totalLight, 1.0);
   }
 `;
 
-// ============================================================================
 // SHADERS DO FUNDO (Space Background)
-// ============================================================================
 
+//O fundo é um 2d simples
 const vsBg = `
   attribute vec2 aPosition;
   void main() {
@@ -143,16 +149,23 @@ const fsBg = `
   uniform vec2 uResolution;
   uniform float uTime;
 
+// Multiplica a coordenada do pixel por números "quebrados" grandes
+// Tira o seno (onda) e pega só a parte decimal (fract).
+// O resultado é um ruído estático parecido com TV fora do ar.
   float rand(vec2 p){
       return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); 
   }
 
+  //divide a tela em grades e define uma identidade a cada quadrado para posicionar aleatoriamente a estrela dentro desse quadrado
   float star(vec2 uv, float time){
       float density = 220.0;
-      vec2 g = uv * density;
-      vec2 id = floor(g);
+      vec2 g = uv * density; // Divide a tela
+      vec2 id = floor(g); // Identidade única
       vec2 f = fract(g);
+      // Usa o ID do quadrado para gerar uma posição aleatória
       vec2 pos = vec2(rand(id), rand(id+23.7));
+
+      // Se o pixel atual (f) estiver perto dessa posição aleatória (pos), desenha branco.
       float d = length(f - pos);
       float size = 0.003 + 0.006*rand(id+78.4);
       float tw = 0.5 + 0.5*sin(time*(1.0+3.0*rand(id+99.0)));
@@ -183,9 +196,7 @@ const fsBg = `
   }
 `;
 
-// ============================================================================
 // SHADERS DO BURACO NEGRO (Void)
-// ============================================================================
 
 const vsVoid = `
   attribute vec3 aPosition;
@@ -209,7 +220,7 @@ const fsVoid = `
       vec2 p = vUv - 0.5;
       float r = length(p);
       
-      // --- LÓGICA DE CRESCIMENTO COM LIMITE ---
+      // LÓGICA DE CRESCIMENTO COM LIMITE 
       // Começa em 0.05 e cresce até 0.35. O 'min' cria o teto (limite).
       // Multiplicador 0.1 define a velocidade do crescimento.
       float growth = min(0.35, 0.05 + uTime * 0.1);
@@ -247,7 +258,9 @@ class ObstacleManager {
           uProj: gl.getUniformLocation(this.program, "uProj"),
           uColor: gl.getUniformLocation(this.program, "uColor"),
       };
-
+//O método createBox cria um Vertex Buffer Object (VBO).
+// Ele pega as coordenadas dos vértices do cubo e envia para a memória da GPU uma única vez no início do jogo.
+//Ele envia os vértices 1 vez e desenha os cubos mudando apenas a posição (Matriz Model)
       this.meshes = {
           box: this.createBox(gl),
           pyramid: this.createPyramid(gl),
@@ -255,7 +268,7 @@ class ObstacleManager {
 
       this.list = [];
       this.spawnTimer = 0;
-      this.spawnInterval = 0.5; 
+      this.spawnInterval = 0.5; //tempo de spawn dos obstáculos 
   }
 
   reset() {
@@ -263,29 +276,40 @@ class ObstacleManager {
       this.spawnTimer = 0;
   }
 
+  //Lógica principal do jogo (geração de obstáculos)
   update(dt, speed) {
+    //controle do tempo
       this.spawnTimer += dt;
       if (this.spawnTimer > this.spawnInterval) {
-          this.spawn();
+          this.spawn(); //cria um novo spawn
           this.spawnTimer = 0;
       }
       
+      //Movimento dos obstáculos 
       this.list.forEach((obs) => {
-          obs.z += speed * dt; 
+          obs.z += speed * dt; //Move do fundo (-z) para frente
       });
-
+// Se o objeto passou da câmera (z > 20.0), remove da lista, ou seja, os objetos são apagados.
       this.list = this.list.filter((obs) => obs.z < 20.0);
   }
 
+  //Lógica de colisões
   checkCollisions(robo) {
       for (const obs of this.list) {
+        // O obstáculo é "fino" (espessura 2.0). Só colide se estiver cruzando o robô.
+        //Profundidade (z)
           if (obs.z > -1.0 && obs.z < 1.0) {
               // Margem lateral
+              // Se estiver na mesma faixa que o robô
+              //Eixo X
               if (Math.abs(obs.x - robo.x) < 1.0) {
+                // checagem vertical (Y)
+                // exclusivamente do laser
                   if (obs.type === "laser") {
                       // Se não estiver pulando alto, bate
                       if (robo.y < -0.5) return true; 
                   } else {
+                    //outros objetos
                       return true; 
                   }
               }
@@ -295,23 +319,29 @@ class ObstacleManager {
   }
 
   render(viewMatrix, projMatrix) {
+    // ativa o shader e seta uniformes globais (View/Proj)
       const gl = this.gl;
       gl.useProgram(this.program);
       gl.uniformMatrix4fv(this.loc.uView, false, viewMatrix);
       gl.uniformMatrix4fv(this.loc.uProj, false, projMatrix);
 
       for (const obs of this.list) {
+        // escolhe qual malha usar (cubo ou pirâmide) 
           if (obs.type === "laser") {
               this.renderLaserBarrier(obs);
           } else {
+            // escolhe qual malha usar (cubo ou pirâmide) 
               const meshName = obs.type === "piramide" ? "pyramid" : "box";
               const mesh = this.meshes[meshName];
               this.bindMesh(mesh);
-
+            //CÁLCULO DA MATRIZ MODEL
               let model = Mat4.identity();
+            //Translação: Move o objeto para sua posição no mundo (X, Y, Z)
               model = Mat4.translate(model, obs.x, obs.y, obs.z);
+            // Escala: Transforma o cubo unitário (1x1x1) no formato desejado
               model = Mat4.scale(model, obs.scale[0], obs.scale[1], obs.scale[2]);
-
+            
+            // Envia para o shader desenhar
               gl.uniformMatrix4fv(this.loc.uModel, false, model);
               gl.uniform3fv(this.loc.uColor, obs.color);
               gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
@@ -319,6 +349,7 @@ class ObstacleManager {
       }
   }
 
+  //Obstáculo laser
   renderLaserBarrier(obs) {
       const gl = this.gl;
       const mesh = this.meshes.box;
@@ -358,7 +389,7 @@ class ObstacleManager {
   }
 
   spawn() {
-      // AJUSTE: FAIXAS AINDA MAIS AFASTADAS (6.0)
+      //Faixas onde os objetos são gerados
       const lanes = [-6.0, 0.0, 6.0];
       const laneX = lanes[Math.floor(Math.random() * lanes.length)];
       const types = ["cubo", "piramide", "paralelepipedo", "laser"];
@@ -367,12 +398,12 @@ class ObstacleManager {
       let obs = {
           x: laneX,
           y: -0.5,
-          z: -150.0, 
+          z: -170.0, //São gerados em z = -170 (no fundo da tela)
           type: type,
           color: [Math.random(), Math.random(), Math.random()],
           scale: [1.0, 1.0, 1.0],
       };
-
+      //Escala dos objetos
       if (type === "cubo") obs.scale = [5.0, 5.0, 5.0];
       else if (type === "piramide") obs.scale = [3.5, 3.5, 3.5];
       else if (type === "paralelepipedo") obs.scale = [5.0, 10.0, 12.0];
@@ -383,6 +414,7 @@ class ObstacleManager {
       this.list.push(obs);
   }
 
+  //Função createBox utilizadaa acima
   createBox(gl) {
       const vertices = new Float32Array([
           -0.5,-0.5,0.5, 0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,0.5,0.5,
@@ -402,6 +434,7 @@ class ObstacleManager {
       return { vbo, nbo, count: vertices.length / 3 };
   }
 
+  //Função createPyramid utilizadaa acima
   createPyramid(gl) {
       const vertices = new Float32Array([
           0.0,0.5,0.0, -0.5,-0.5,0.5, 0.5,-0.5,0.5, 0.0,0.5,0.0, 0.5,-0.5,0.5, 0.5,-0.5,-0.5,
@@ -418,8 +451,7 @@ class ObstacleManager {
 
 
 //  MAIN GAME
-
-
+//Shader genérico utilizado tanto pela pista quanto pelo robô
 const vsCommon = `
   attribute vec3 aPosition;
   attribute vec2 aTexCoord; 
@@ -431,28 +463,38 @@ const vsCommon = `
   varying vec3 vNormal;
   void main() {
       gl_Position = uProj * uView * uModel * vec4(aPosition, 1.0);
-      vTexCoord = aTexCoord;
+      vTexCoord = aTexCoord; // Passa a coordenada da textura (UV)
       vNormal = (uModel * vec4(aNormal, 0.0)).xyz; 
   }
 `;
 
+//Fragment shaader da pista -> a sensação de movimento será dado pelo deslizar da textura
 const fsPista = `
   precision mediump float;
   varying vec2 vTexCoord;
   uniform sampler2D uSampler;
-  uniform float uOffset;
+  uniform float uOffset; // O quanto a pista "andou"
   void main() {
-      // AJUSTE NA PROPORÇÃO PARA O CHÃO CORRER MAIS RÁPIDO VISUALMENTE
+    // Multiplica vTexCoord para a textura repetir várias vezes (tiling)
+    // Soma uOffset no eixo Y para fazer a textura "correr" visualmente
       vec2 uv = vTexCoord * vec2(3.0, 10.0);
       uv.y += uOffset; 
+
       vec4 color = texture2D(uSampler, uv);
+
+    // FOG (Neblina de Profundidade):
+    // gl_FragCoord.w é a distância do pixel até a câmera
       float dist = gl_FragCoord.w;
+
+    //quanto maior a distância, menor o valor de 'fog'
       float fog = 1.0 / exp(dist * 0.03); 
       vec3 fogColor = vec3(0.05, 0.05, 0.15);
+      // Mistura a cor do chão com a cor da neblina baseada na distância
       gl_FragColor = vec4(mix(fogColor, color.rgb, clamp(fog, 0.0, 1.0)), 1.0);
   }
 `;
 
+//Fragment Shader do robo
 const fsRobo = `
   precision mediump float;
   varying vec3 vNormal;
@@ -462,12 +504,12 @@ const fsRobo = `
   void main() {
       vec3 n = normalize(vNormal);
 
-      // --- FONTE 1: Principal ---
+      // FONTE 1: Principal
       vec3 l1Dir = normalize(vec3(0.5, 0.8, 0.5));
       float diff1 = max(dot(n, l1Dir), 0.0);
       vec3 light1 = vec3(1.0, 1.0, 1.0) * diff1;
 
-      // --- FONTE 2: Vazio (Roxo) ---
+      // FONTE 2: Vazio (Roxo) 
       vec3 l2Dir = normalize(vec3(0.0, 0.5, -1.0));
       float diff2 = max(dot(n, l2Dir), 0.0);
       vec3 light2 = vec3(0.8, 0.2, 1.0) * diff2;
@@ -475,12 +517,13 @@ const fsRobo = `
       // Ambiente
       vec3 ambient = vec3(0.2, 0.2, 0.3);
 
-      // Combinação
+      // Combinação de iluminação igual aos obstáculos
       vec3 lighting = ambient + light1 + light2;
       vec3 finalColor = uColor * lighting;
 
-      // --- EMISSÃO (Neon) ---
+      // EMISSÃO (Neon)
       // Se for parte brilhante (emissive), ignora sombras e brilha forte
+      // A cor é simplesmente a cor original multiplicada por 1.5 (para estourar o brilho e dar efeito de "neon")
       if (uEmissive > 0.5) {
           finalColor = uColor * 1.5; 
       }
@@ -496,6 +539,7 @@ const LERP_SPEED = 5.0; // Velocidade da animação lateral
 
 const input = { jump: false }; // Só precisamos rastrear o pulo aqui
 
+//Jogabilidade
 window.addEventListener('keydown', e => {
     // Esquerda
     if(e.key==='a' || e.key==='ArrowLeft') {
@@ -543,6 +587,7 @@ async function main() {
   gl.clearColor(0.05, 0.05, 0.15, 1.0);
 
   // --- SHADERS E OBJETOS ---
+  //Aqui "cozinhamos" os shaders e enviamos os vértices dos modelos (cilindro, esfera, plano) para a memória da vídeo uma única vez.
   const obstacleManager = new ObstacleManager(gl); 
   const progPista = createProgram(gl, vsCommon, fsPista);
   const progRobo = createProgram(gl, vsCommon, fsRobo);
@@ -567,7 +612,7 @@ async function main() {
   const lightCyan = [0.0, 1.0, 1.0];
   const emerald   = [0.0, 0.8, 0.4];
 
-  // --- VARIÁVEIS DE ESTADO ---
+  // VARIÁVEIS DE ESTADO 
   let gameState = 'MENU'; // 'MENU', 'PLAYING', 'GAMEOVER'
   let GAME_SPEED = 50.0; 
   let score = 0;
@@ -636,6 +681,7 @@ async function main() {
   if (restartBtn) restartBtn.onclick = startGame; // Restart usa a mesma lógica de start
 
   // --- LOOP DE RENDERIZAÇÃO ---
+  // Esta é a parte que simula a realidade. Aqui cada frame é colocado para rodar, calculando onde as coisas estão antes de desenhá-las.
   let then = 0;
   function render(now) {
       now *= 0.001;
@@ -644,7 +690,8 @@ async function main() {
 
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      // 1. Desenha o Fundo (Sempre visível)
+      // Desenha o Fundo
+      //Desativamos a profundidade momentaneamente para desenhar o fundo
       gl.disable(gl.DEPTH_TEST); 
       gl.useProgram(progBg);
       gl.uniform2f(gl.getUniformLocation(progBg, "uResolution"), canvas.width, canvas.height);
@@ -654,14 +701,15 @@ async function main() {
       gl.enableVertexAttribArray(aPosBg);
       gl.vertexAttribPointer(aPosBg, 2, gl.FLOAT, false, 0, 0);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      //O DEPTH_TEST faz a GPU verificar a profundidade de cada pixel antes de pintar
       gl.enable(gl.DEPTH_TEST); 
 
       // Se estiver em Game Over, para a atualização física mas continua desenhando
       if (gameState === 'GAMEOVER') {
-          // Pode adicionar efeito de glitch ou apenas pausar
       }
 
-      // --- ATUALIZAÇÃO (Apenas se estiver jogando) ---
+      //  ATUALIZAÇÃO (Apenas se estiver jogando)
       if (gameState === 'PLAYING') {
            score += GAME_SPEED * dt * 0.1; 
            scoreEl.innerText = Math.floor(score);
@@ -670,20 +718,25 @@ async function main() {
            obstacleManager.update(dt, GAME_SPEED);
 
            // Física Robô
+
+           //Movimento lateral suave para não ir instantaneamente de um lado para o outro
            const targetX = currentLane * LANE_WIDTH; 
            robo.x += (targetX - robo.x) * LERP_SPEED * dt; 
         
+           //Pulo
            if (inputState.jump && !robo.isJumping) {
                robo.velY = robo.jumpPower;
                robo.isJumping = true;
            }
+           //Gravidade
            robo.velY -= robo.gravity; 
            robo.y += robo.velY;
+           //Colisão com o chão
            if (robo.y <= -2.0) {
                robo.y = -2.0; robo.velY = 0; robo.isJumping = false;
            }
 
-           // Colisão
+           // Detecção de colisão e gameover
            if (obstacleManager.checkCollisions(robo)) {
                gameState = 'GAMEOVER';
                gameOverScreen.style.display = "block";
@@ -692,7 +745,7 @@ async function main() {
            trackOffset += 0.5 * dt; // Movimento lento no menu
       }
 
-      // --- CÂMERA ---
+      // CÂMERA
       const aspect = canvas.width / canvas.height;
       const proj = Mat4.perspective(45 * Math.PI/180, aspect, 0.1, 400);
       
@@ -755,6 +808,7 @@ async function main() {
           gl.useProgram(progRobo);
           setUniforms(gl, progRobo, view, proj); 
           
+          //Movimento dos membros
           let armAngle = 0, legAngle = 0;
           if (gameState === 'PLAYING' && !robo.isJumping) {
               armAngle = Math.sin(now * 15) * 0.6;
@@ -862,10 +916,8 @@ async function main() {
   requestAnimationFrame(render);
 }
 
-// ============================================================================
 // HELPERS
-// ============================================================================
-
+//uma "Mini Game Engine" fácil de usar para realizar todo o trabalho "sujo" do webgl
 function createProgram(gl, vs, fs) {
   const p = gl.createProgram();
   const v = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(v, vs); gl.compileShader(v);
@@ -934,7 +986,7 @@ function loadTexture(gl, url) {
   return tex;
 }
 
-// --- CRIADORES DE GEOMETRIA ---
+//  CRIADORES DE GEOMETRIA
 
 function createPlane(gl, w, d) {
   const v = new Float32Array([-w,-2,-d, w,-2,-d, w,-2,10, -w,-2,10]);
