@@ -98,12 +98,32 @@ const fsObs = `
   precision mediump float;
   varying vec3 vNormal;
   uniform vec3 uColor;
+  
   void main() {
-      vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
-      float diff = max(dot(normalize(vNormal), lightDir), 0.0);
-      float ambient = 0.6;
-      float light = min(ambient + diff, 1.0);
-      gl_FragColor = vec4(uColor * light, 1.0);
+      vec3 n = normalize(vNormal);
+
+      // --- FONTE DE LUZ 1: PRINCIPAL (Estrela Distante) ---
+      // Vem da direita superior (0.5, 0.8, 0.5)
+      // Cor: Branca Fria
+      vec3 l1Dir = normalize(vec3(0.5, 0.8, 0.5));
+      float diff1 = max(dot(n, l1Dir), 0.0);
+      vec3 light1 = vec3(1.0, 1.0, 1.0) * diff1;
+
+      // --- FONTE DE LUZ 2: BURACO NEGRO (Backlight) ---
+      // Vem do fundo (0.0, 0.2, -1.0) - Z negativo
+      // Cor: Roxo Intenso para dar clima
+      vec3 l2Dir = normalize(vec3(0.0, 0.2, -1.0));
+      float diff2 = max(dot(n, l2Dir), 0.0);
+      vec3 light2 = vec3(0.8, 0.0, 1.0) * diff2 * 0.8; // Intensidade 0.8
+
+      // --- LUZ AMBIENTE (Base) ---
+      // Garante que nada fique 100% preto nas sombras
+      vec3 ambient = vec3(0.1, 0.1, 0.2);
+
+      // SOMA TUDO
+      vec3 totalLight = ambient + light1 + light2;
+      
+      gl_FragColor = vec4(uColor * totalLight, 1.0);
   }
 `;
 
@@ -438,12 +458,33 @@ const fsRobo = `
   varying vec3 vNormal;
   uniform vec3 uColor;
   uniform float uEmissive;
+  
   void main() {
-      vec3 normal = normalize(vNormal);
-      vec3 light = normalize(vec3(0.5, 1.0, 0.5));
-      float diff = max(dot(normal, light), 0.3);
-      vec3 finalColor = uColor * diff;
-      if (uEmissive > 0.5) finalColor = uColor * 1.8; 
+      vec3 n = normalize(vNormal);
+
+      // --- FONTE 1: Principal ---
+      vec3 l1Dir = normalize(vec3(0.5, 0.8, 0.5));
+      float diff1 = max(dot(n, l1Dir), 0.0);
+      vec3 light1 = vec3(1.0, 1.0, 1.0) * diff1;
+
+      // --- FONTE 2: Vazio (Roxo) ---
+      vec3 l2Dir = normalize(vec3(0.0, 0.5, -1.0));
+      float diff2 = max(dot(n, l2Dir), 0.0);
+      vec3 light2 = vec3(0.8, 0.2, 1.0) * diff2;
+
+      // Ambiente
+      vec3 ambient = vec3(0.2, 0.2, 0.3);
+
+      // Combinação
+      vec3 lighting = ambient + light1 + light2;
+      vec3 finalColor = uColor * lighting;
+
+      // --- EMISSÃO (Neon) ---
+      // Se for parte brilhante (emissive), ignora sombras e brilha forte
+      if (uEmissive > 0.5) {
+          finalColor = uColor * 1.5; 
+      }
+
       gl_FragColor = vec4(finalColor, 1.0);
   }
 `;
@@ -814,7 +855,7 @@ async function main() {
               setColor(gl, progRobo, lightCyan, true); drawMesh(gl, progRobo, cilGeo, kneeM);
           };
           drawLeg(-1); drawLeg(1);
-      } // Fim do if cameraMode === 0
+      } 
 
       requestAnimationFrame(render);
   }
