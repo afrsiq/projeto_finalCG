@@ -255,7 +255,7 @@ class ObstacleManager {
 
       this.list = [];
       this.spawnTimer = 0;
-      this.spawnInterval = 1.0; 
+      this.spawnInterval = 0.5; 
   }
 
   reset() {
@@ -373,9 +373,9 @@ class ObstacleManager {
           scale: [1.0, 1.0, 1.0],
       };
 
-      if (type === "cubo") obs.scale = [2.0, 2.0, 2.0];
-      else if (type === "piramide") obs.scale = [2.0, 2.0, 2.0];
-      else if (type === "paralelepipedo") obs.scale = [2.0, 2.0, 10.0];
+      if (type === "cubo") obs.scale = [5.0, 5.0, 5.0];
+      else if (type === "piramide") obs.scale = [3.5, 3.5, 3.5];
+      else if (type === "paralelepipedo") obs.scale = [5.0, 10.0, 12.0];
       else if (type === "laser") {
           obs.y = -2.0;
           obs.color = [0.3, 0.3, 0.3];
@@ -569,7 +569,7 @@ async function main() {
 
   // --- VARIÁVEIS DE ESTADO ---
   let gameState = 'MENU'; // 'MENU', 'PLAYING', 'GAMEOVER'
-  let GAME_SPEED = 35.0; 
+  let GAME_SPEED = 50.0; 
   let score = 0;
   let trackOffset = 0;
   
