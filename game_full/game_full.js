@@ -107,6 +107,61 @@ const fsObs = `
   }
 `;
 
+// ============================================================================
+// SHADERS DO FUNDO (Space Background)
+// ============================================================================
+
+const vsBg = `
+  attribute vec2 aPosition;
+  void main() {
+    gl_Position = vec4(aPosition, 0.0, 1.0);
+  }
+`;
+
+const fsBg = `
+  precision mediump float;
+  uniform vec2 uResolution;
+  uniform float uTime;
+
+  float rand(vec2 p){
+      return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); 
+  }
+
+  float star(vec2 uv, float time){
+      float density = 220.0;
+      vec2 g = uv * density;
+      vec2 id = floor(g);
+      vec2 f = fract(g);
+      vec2 pos = vec2(rand(id), rand(id+23.7));
+      float d = length(f - pos);
+      float size = 0.003 + 0.006*rand(id+78.4);
+      float tw = 0.5 + 0.5*sin(time*(1.0+3.0*rand(id+99.0)));
+      return smoothstep(size, size*0.2, d) * tw;
+  }
+
+  float stars(vec2 uv, float t){
+      float s=0.0;
+      for(int ox=-1; ox<=1; ox++){
+         for(int oy=-1; oy<=1; oy++){
+           s += star(uv + vec2(ox,oy)/220.0, t);
+         }
+      }
+      return s;
+  }
+
+  vec3 gradient(vec2 uv){
+      vec3 purple = vec3(0.45, 0.15, 0.6);
+      vec3 blue   = vec3(0.02, 0.06, 0.18);
+      return mix(blue, purple, uv.y);
+  }
+
+  void main(){
+      vec2 uv = gl_FragCoord.xy / uResolution;
+      vec3 bg = gradient(uv);
+      bg += vec3(1.0, 0.95, 0.9) * stars(uv, uTime);
+      gl_FragColor = vec4(bg, 1.0);
+  }
+`;
 class ObstacleManager {
   constructor(gl) {
       this.gl = gl;
@@ -393,6 +448,13 @@ async function main() {
   const progPista = createProgram(gl, vsCommon, fsPista);
   const progRobo = createProgram(gl, vsCommon, fsRobo);
 
+  const progBg = createProgram(gl, vsBg, fsBg);
+  
+  const bgQuadGeo = createBuffer(gl, new Float32Array([
+      -1, -1,   1, -1,   -1,  1,   
+      -1,  1,   1, -1,    1,  1
+  ]), null, null, new Uint16Array([0,1,2, 3,4,5]));
+
   const pistaGeo = createPlane(gl, 20, 200);
   const cilGeo   = createCylinder(gl);
   const sphereGeo= createSphere(gl);
@@ -446,19 +508,36 @@ async function main() {
   restartBtn.addEventListener("click", resetGame);
 
   function render(now) {
-      if (isGameOver) return;
+        if (isGameOver) return;
 
-      now *= 0.001;
-      const dt = now - then;
-      then = now;
+        now *= 0.001;
+        const dt = now - then;
+        then = now;
 
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        // 1. Limpa a tela
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // 2. DESENHAR O FUNDO (Space Background)
+        gl.disable(gl.DEPTH_TEST); // Desliga profundidade para desenhar no fundo
+        gl.useProgram(progBg);
+        
+        // Passa resolução e tempo para o shader de estrelas
+        gl.uniform2f(gl.getUniformLocation(progBg, "uResolution"), canvas.width, canvas.height);
+        gl.uniform1f(gl.getUniformLocation(progBg, "uTime"), now);
+
+        // Desenha o quadrado
+        gl.bindBuffer(gl.ARRAY_BUFFER, bgQuadGeo.vbo);
+        const aPosBg = gl.getAttribLocation(progBg, "aPosition");
+        gl.enableVertexAttribArray(aPosBg);
+        gl.vertexAttribPointer(aPosBg, 2, gl.FLOAT, false, 0, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      gl.enable(gl.DEPTH_TEST); // Liga profundidade de volta para o 3D
 
       // Aumenta pontos baseado na velocidade fixa
       score += GAME_SPEED * dt * 0.1; 
       scoreEl.innerText = Math.floor(score);
     
-
       // Física Robô
       const targetX = currentLane * LANE_WIDTH; 
       robo.x += (targetX - robo.x) * LERP_SPEED * dt; 
