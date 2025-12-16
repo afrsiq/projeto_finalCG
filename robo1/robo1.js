@@ -6,7 +6,6 @@ Pernas: 2 paralelepípedos (cubos alongados)
 Peito: Esfera decorativa com textura metálica
 Olhos: 2 pequenas esferas fluorescentes (LED azul)
 Cor: Azul metálico com detalhes em ciano fluorescente
-Velocidade: 1.0x (padrão)
 Tamanho: Médio
 */
 
