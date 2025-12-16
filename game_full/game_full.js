@@ -162,6 +162,59 @@ const fsBg = `
       gl_FragColor = vec4(bg, 1.0);
   }
 `;
+
+// ============================================================================
+// SHADERS DO BURACO NEGRO (Void)
+// ============================================================================
+
+const vsVoid = `
+  attribute vec3 aPosition;
+  attribute vec2 aTexCoord;
+  uniform mat4 uModel;
+  uniform mat4 uView;
+  uniform mat4 uProj;
+  varying vec2 vUv;
+  void main() {
+      gl_Position = uProj * uView * uModel * vec4(aPosition, 1.0);
+      vUv = aTexCoord;
+  }
+`;
+
+const fsVoid = `
+  precision mediump float;
+  varying vec2 vUv;
+  uniform float uTime;
+  
+  void main() {
+      vec2 p = vUv - 0.5;
+      float r = length(p);
+      
+      // --- LÓGICA DE CRESCIMENTO COM LIMITE ---
+      // Começa em 0.05 e cresce até 0.35. O 'min' cria o teto (limite).
+      // Multiplicador 0.1 define a velocidade do crescimento.
+      float growth = min(0.35, 0.05 + uTime * 0.1);
+      
+      // Adiciona um leve pulsar (instabilidade) em cima do tamanho atual
+      float pulse = 0.01 * sin(uTime * 5.0);
+      float size = growth + pulse;
+      
+      // Desenho do Disco
+      float disk = smoothstep(size, size - 0.01, r);
+      
+      // O Brilho (Accretion Disk)
+      float glow = 0.02 / abs(r - size);
+      glow = pow(glow, 1.5); 
+      vec3 glowColor = vec3(0.6, 0.2, 1.0) * glow;
+      
+      vec3 finalColor = glowColor;
+      finalColor = mix(finalColor, vec3(0.0), disk);
+      
+      // Alpha para recortar o quadrado transparente
+      float alpha = smoothstep(0.5, 0.45, r);
+      
+      gl_FragColor = vec4(finalColor, alpha);
+  }
+`;
 class ObstacleManager {
   constructor(gl) {
       this.gl = gl;
@@ -448,12 +501,17 @@ async function main() {
   const progPista = createProgram(gl, vsCommon, fsPista);
   const progRobo = createProgram(gl, vsCommon, fsRobo);
 
+  //Fundo
   const progBg = createProgram(gl, vsBg, fsBg);
   
   const bgQuadGeo = createBuffer(gl, new Float32Array([
       -1, -1,   1, -1,   -1,  1,   
       -1,  1,   1, -1,    1,  1
   ]), null, null, new Uint16Array([0,1,2, 3,4,5]));
+
+  //Buraco negro
+  const progVoid = createProgram(gl, vsVoid, fsVoid);
+  const voidGeo = createVerticalQuad(gl);
 
   const pistaGeo = createPlane(gl, 20, 200);
   const cilGeo   = createCylinder(gl);
@@ -508,37 +566,40 @@ async function main() {
   restartBtn.addEventListener("click", resetGame);
 
   function render(now) {
-        if (isGameOver) return;
+      if (isGameOver) return;
 
-        now *= 0.001;
-        const dt = now - then;
-        then = now;
+      now *= 0.001;
+      const dt = now - then;
+      then = now;
 
-        // 1. Limpa a tela
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      // 1. Limpa a tela
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        // 2. DESENHAR O FUNDO (Space Background)
-        gl.disable(gl.DEPTH_TEST); // Desliga profundidade para desenhar no fundo
-        gl.useProgram(progBg);
-        
-        // Passa resolução e tempo para o shader de estrelas
-        gl.uniform2f(gl.getUniformLocation(progBg, "uResolution"), canvas.width, canvas.height);
-        gl.uniform1f(gl.getUniformLocation(progBg, "uTime"), now);
+      // 2. DESENHAR O FUNDO (Space Background)
+      gl.disable(gl.DEPTH_TEST); 
+      gl.useProgram(progBg);
+      gl.uniform2f(gl.getUniformLocation(progBg, "uResolution"), canvas.width, canvas.height);
+      gl.uniform1f(gl.getUniformLocation(progBg, "uTime"), now);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bgQuadGeo.vbo);
+      const aPosBg = gl.getAttribLocation(progBg, "aPosition");
+      gl.enableVertexAttribArray(aPosBg);
+      gl.vertexAttribPointer(aPosBg, 2, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.enable(gl.DEPTH_TEST); 
 
-        // Desenha o quadrado
-        gl.bindBuffer(gl.ARRAY_BUFFER, bgQuadGeo.vbo);
-        const aPosBg = gl.getAttribLocation(progBg, "aPosition");
-        gl.enableVertexAttribArray(aPosBg);
-        gl.vertexAttribPointer(aPosBg, 2, gl.FLOAT, false, 0, 0);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      // --- LOGICA DE JOGO (Pontos e Velocidade) ---
+      if (score > 0 || GAME_SPEED > 20.0) { // Estamos jogando?
+           score += GAME_SPEED * dt * 0.1; 
+           scoreEl.innerText = Math.floor(score);
+           
+           trackOffset += (GAME_SPEED / 22.0) * dt; // Pista rápida
+           obstacleManager.update(dt, GAME_SPEED);
+      } else {
+           // Menu Mode: Pista lenta
+           trackOffset += 0.2 * dt; 
+      }
 
-      gl.enable(gl.DEPTH_TEST); // Liga profundidade de volta para o 3D
-
-      // Aumenta pontos baseado na velocidade fixa
-      score += GAME_SPEED * dt * 0.1; 
-      scoreEl.innerText = Math.floor(score);
-    
-      // Física Robô
+      // --- FISICA DO ROBO ---
       const targetX = currentLane * LANE_WIDTH; 
       robo.x += (targetX - robo.x) * LERP_SPEED * dt; 
     
@@ -546,59 +607,89 @@ async function main() {
           robo.velY = robo.jumpPower;
           robo.isJumping = true;
       }
-      
       robo.velY -= robo.gravity; 
       robo.y += robo.velY;
-
       if (robo.y <= -2.0) {
-          robo.y = -2.0;
-          robo.velY = 0;
-          robo.isJumping = false;
+          robo.y = -2.0; robo.velY = 0; robo.isJumping = false;
       }
 
-      // Atualiza textura e obstáculos com velocidade fixa
-      trackOffset += TEXTURE_SPEED * dt;
-      obstacleManager.update(dt, GAME_SPEED);
-
+      // Colisão
       if (obstacleManager.checkCollisions(robo)) {
           isGameOver = true;
           gameOverScreen.style.display = "block";
           return; 
       }
 
+      // --- CÂMERA E MATRIZES ---
       const aspect = canvas.width / canvas.height;
       const proj = Mat4.perspective(45 * Math.PI/180, aspect, 0.1, 400);
       
-      const camPos = [robo.x * 0.3, 6, 15]; 
-      const target = [0, 0, -10];
+      let camPos, target;
+      
+      if (score === 0 && GAME_SPEED === 20.0 && !input.jump && currentLane === 0) {
+          // ESTADO MENU: Câmera olha para o horizonte (Buraco Negro)
+          camPos = [0, 3, 25]; 
+          target = [0, 5, -200]; 
+      } else {
+          // ESTADO JOGO: Câmera segue o robô
+          camPos = [robo.x * 0.3, 6, 15]; 
+          target = [0, 0, -10];
+      }
+      
       const view = Mat4.lookAt(camPos, target, [0,1,0]);
 
-      // PISTA
+      // 3. DESENHAR BURACO NEGRO (No horizonte)
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.useProgram(progVoid);
+      setUniforms(gl, progVoid, view, proj);
+      gl.uniform1f(gl.getUniformLocation(progVoid, "uTime"), now);
+      
+      // Posiciona bem longe (Z = -220) e escala muito (100x)
+      let mVoid = Mat4.identity();
+      mVoid = Mat4.translate(mVoid, 0, 5, -220); 
+      mVoid = Mat4.scale(mVoid, 100, 100, 1); 
+      
+      // Setup manual dos buffers para o void
+      gl.uniformMatrix4fv(gl.getUniformLocation(progVoid, "uModel"), false, mVoid);
+      gl.bindBuffer(gl.ARRAY_BUFFER, voidGeo.vbo);
+      const posLocV = gl.getAttribLocation(progVoid, "aPosition");
+      gl.enableVertexAttribArray(posLocV);
+      gl.vertexAttribPointer(posLocV, 3, gl.FLOAT, false, 0, 0);
+      
+      if(voidGeo.tbo) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, voidGeo.tbo);
+        const texLocV = gl.getAttribLocation(progVoid, "aTexCoord");
+        gl.enableVertexAttribArray(texLocV);
+        gl.vertexAttribPointer(texLocV, 2, gl.FLOAT, false, 0, 0);
+      }
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, voidGeo.ibo);
+      gl.drawElements(gl.TRIANGLES, voidGeo.count, gl.UNSIGNED_SHORT, 0);
+      gl.disable(gl.BLEND);
+
+      // 4. DESENHAR PISTA
       gl.useProgram(progPista);
       setUniforms(gl, progPista, view, proj);
       gl.uniform1f(gl.getUniformLocation(progPista, "uOffset"), trackOffset);
-      
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, texPista);
       gl.uniform1i(gl.getUniformLocation(progPista, "uSampler"), 0);
-      
       drawMesh(gl, progPista, pistaGeo, Mat4.identity());
 
-      // OBSTÁCULOS
+      // 5. DESENHAR OBSTÁCULOS
       obstacleManager.render(view, proj);
 
-      // ROBÔ
+      // 6. DESENHAR ROBÔ
       gl.useProgram(progRobo);
       setUniforms(gl, progRobo, view, proj); 
       
-      let armAngle = 0;
-      let legAngle = 0;
+      // Animação Robô
+      let armAngle = 0, legAngle = 0;
       if (!robo.isJumping) {
           armAngle = Math.sin(now * 15) * 0.6;
           legAngle = Math.sin(now * 15) * 0.6;
       } else {
-          armAngle = -0.5; 
-          legAngle = 0.5;
+          armAngle = -0.5; legAngle = 0.5;
       }
 
       const baseY = robo.y + 3.2; 
@@ -617,7 +708,7 @@ async function main() {
       setColor(gl, progRobo, lightCyan, true);
       drawMesh(gl, progRobo, cilGeo, m);
 
-      // Costas
+      // Costas (Asa)
       m = Mat4.identity();
       m = Mat4.translate(m, robo.x, baseY + 0.2, 0.42);
       m = Mat4.rotateZ(m, Math.PI); 
@@ -648,7 +739,7 @@ async function main() {
       setColor(gl, progRobo, neonGreen, false);
       drawMesh(gl, progRobo, sphereGeo, m);
 
-      // Espinhos
+      // Espinhos Cabeça
       for(let i=0; i<3; i++) {
           let sm = Mat4.identity();
           sm = Mat4.translate(sm, robo.x, headY + 0.3, 0); 
@@ -660,17 +751,10 @@ async function main() {
       }
 
       // Olhos
-      m = Mat4.identity();
-      m = Mat4.translate(m, robo.x - 0.2, headY + 0.1, -0.35);
-      m = Mat4.scale(m, 0.15, 0.15, 0.15);
-      setColor(gl, progRobo, emerald, true);
-      drawMesh(gl, progRobo, sphereGeo, m);
-
-      m = Mat4.identity();
-      m = Mat4.translate(m, robo.x + 0.2, headY + 0.1, -0.35);
-      m = Mat4.scale(m, 0.15, 0.15, 0.15);
-      setColor(gl, progRobo, emerald, true);
-      drawMesh(gl, progRobo, sphereGeo, m);
+      m = Mat4.identity(); m = Mat4.translate(m, robo.x - 0.2, headY + 0.1, -0.35); m = Mat4.scale(m, 0.15, 0.15, 0.15);
+      setColor(gl, progRobo, emerald, true); drawMesh(gl, progRobo, sphereGeo, m);
+      m = Mat4.identity(); m = Mat4.translate(m, robo.x + 0.2, headY + 0.1, -0.35); m = Mat4.scale(m, 0.15, 0.15, 0.15);
+      setColor(gl, progRobo, emerald, true); drawMesh(gl, progRobo, sphereGeo, m);
 
       // Braços
       const drawArm = (side) => {
@@ -679,12 +763,10 @@ async function main() {
           sm = Mat4.rotateX(sm, side * -armAngle);
           let shoulderM = Mat4.copy(sm);
           let drawM = Mat4.scale(sm, 0.3, 0.3, 0.3);
-          setColor(gl, progRobo, lightCyan, false);
-          drawMesh(gl, progRobo, sphereGeo, drawM);
+          setColor(gl, progRobo, lightCyan, false); drawMesh(gl, progRobo, sphereGeo, drawM);
           shoulderM = Mat4.translate(shoulderM, 0, -0.9, 0);
           shoulderM = Mat4.scale(shoulderM, 0.2, 1.9, 0.2);
-          setColor(gl, progRobo, neonGreen, false);
-          drawMesh(gl, progRobo, cilGeo, shoulderM);
+          setColor(gl, progRobo, neonGreen, false); drawMesh(gl, progRobo, cilGeo, shoulderM);
       };
       drawArm(-1); drawArm(1);
 
@@ -694,16 +776,12 @@ async function main() {
           lm = Mat4.translate(lm, robo.x + (side * 0.3), baseY - 0.8, 0); 
           lm = Mat4.rotateX(lm, side * legAngle);
           let kneeM = Mat4.copy(lm);
-          
           lm = Mat4.translate(lm, 0, -1.5, 0); 
           let legScale = Mat4.scale(lm, 0.25, 3.0, 0.25); 
-          setColor(gl, progRobo, neonGreen, false);
-          drawMesh(gl, progRobo, cilGeo, legScale);
-          
+          setColor(gl, progRobo, neonGreen, false); drawMesh(gl, progRobo, cilGeo, legScale);
           kneeM = Mat4.translate(kneeM, 0, -1.5, -0.15);
           kneeM = Mat4.scale(kneeM, 0.26, 0.3, 0.1);
-          setColor(gl, progRobo, lightCyan, true);
-          drawMesh(gl, progRobo, cilGeo, kneeM);
+          setColor(gl, progRobo, lightCyan, true); drawMesh(gl, progRobo, cilGeo, kneeM);
       };
       drawLeg(-1); drawLeg(1);
 
@@ -860,6 +938,27 @@ function createBuffer(gl, v, n, t, i) {
   if(n) { nbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, nbo); gl.bufferData(gl.ARRAY_BUFFER, n, gl.STATIC_DRAW); }
   if(t) { tbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, tbo); gl.bufferData(gl.ARRAY_BUFFER, t, gl.STATIC_DRAW); }
   return { vbo, nbo, tbo, ibo, count: i.length };
+}
+
+function createVerticalQuad(gl) {
+    // Quadrado 1x1 em pé (Facing Z)
+    const v = new Float32Array([
+        -0.5, -0.5, 0.0,   0.5, -0.5, 0.0,   0.5,  0.5, 0.0,
+        -0.5, -0.5, 0.0,   0.5,  0.5, 0.0,  -0.5,  0.5, 0.0
+    ]);
+    // UVs
+    const t = new Float32Array([
+        0, 0,  1, 0,  1, 1,
+        0, 0,  1, 1,  0, 1
+    ]);
+    // Normais
+    const n = new Float32Array([
+        0,0,1, 0,0,1, 0,0,1, 0,0,1, 0,0,1, 0,0,1
+    ]);
+    const i = new Uint16Array([0, 1, 2, 3, 4, 5]);
+    
+    // Reutiliza sua função helper existente
+    return createBuffer(gl, v, n, t, i);
 }
 
 main();
